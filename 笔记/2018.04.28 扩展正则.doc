@@ -1,0 +1,148 @@
+扩展正则 ： 增加了基本正则没有的功能 对基本正则优化
+
+
+基本正则： 兼容性强，书写麻烦 
+扩展正则 ：书写简单，兼容性差
+
+sed工具概述：流式编辑器
+—非交互，基于模式匹配过滤及修改文本 
+—逐行处理，并将结果输出到屏幕
+—可实现对文本的输出、删除、替换、复制、剪切、导入、导出等操作
+
+sed命令的常用选项如下：
+-n（屏蔽默认输出，默认sed会输出读取文档的全部内容）
+-r（让sed支持扩展正则）
+-i（sed直接修改源文件，默认sed只是通过内存临时修改文件，源文件无影响）
+
+执行p打印等过滤操作时，希望看到的是符合条件的文本。但不使用任何选项时，默认会将原始文本一并输出，从而干扰过滤效果。比如，尝试用sed输出/etc/passwd的第1行：
+[root@server0 ~]# sed  "1p" /etc/passwd  
+所有的行都被显示出来了（第1行重复2次）。—— 正确的用法应该添加 -n 选项，这样就可以只显示第1行了：
+
+[root@server0 ~]# sed -n "1p" /etc/passwd
+
+行号可以是连续的行号，如打印passwd第3到第6行账户的信息：
+[root@server0 ~]# sed  -n '3,6p' /etc/passwd
+
+sed命令的 -i 选项
+正常情况下，sed命令所做的处理只是把操作结果（包括打印、删除等）输出到当前终端屏幕，而并不会对原始文件做任何更改：
+
+[root@svr5 ~]# sed 'd' /etc/passwd                      //删除所有行
+[root@svr5 ~]# cat /etc/passwd                          //查看原始文本，并未改动
+若希望直接修改文件内容，再添加选项 -i 。 加-i选项时 一定要三思而后行！！！
+
+
+# sed [选项] '条件指令' 文件.. ..
+sed命令可以使用行号或正则做为条件匹配：
+
+1）行号案例
+打印第3行：
+[root@svr5 ~]# sed -n '3p' /etc/passwd  精确打印第三行 
+
+打印第3到5行：
+[root@svr5 ~]# sed -n '3,5p' /etc/passwd  
+打印第3和第5行：
+[root@svr5 ~]# sed -n '3p;5p' /etc/passwd 
+打印第3以及后面的10行：
+[root@svr5 ~]# sed -n '3,+10p' /etc/passwd
+
+打印奇数行：
+[root@svr5 ~]# sed -n '1~2p' /etc/passwd  打印1+2=3行 3+2=5行 依此+2 显示的行数
+打印偶数行：
+[root@svr5 ~]# sed -n '2~2p' /etc/passwd  打印2+2=4行 4+2=6行 依此+2 显示的行数 
+
+
+2）正则案例
+打印包含root的行：
+[root@svr5 ~]# sed -n '/root/p' /etc/passwd        	  ##要用两个//括起来
+
+[root@server0 ~]# sed -n '/bash$/p' /etc/passwd      #用正则 打印出以bash结尾的行
+
+
+sed工具的p指令案例集锦:
+[root@svr5 ~]# sed  -n 'p' a.txt              //输出所有行，等同于cat a.txt
+[root@svr5 ~]# sed  -n '4p' a.txt             //输出第4行
+[root@svr5 ~]# sed  -n '4,7p' a.txt           //输出第4~7行
+[root@server0 ~]# sed -n '4p;7p' tmp.txt      //输出第4行和第7行
+[root@svr5 ~]# sed  -n '4,+10p' a.txt         //输出第4行及其后的10行内容
+[root@svr5 ~]# sed  -n '/^bin/p' a.txt        //输出以bin开头的行
+[root@svr5 ~]# sed  -n '$=' a.txt             //输出文件的行数
+
+ed工具的d指令案例集锦:
+[root@svr5 ~]# sed  '3,5d' a.txt             	 //删除第3~5行
+[root@svr5 ~]# sed  '/xml/d' a.txt           	 //删除所有包含xml的行
+[root@svr5 ~]# sed  '/xml/!d' a.txt        	 //删除不包含xml的行，!符号表示取反 其它不包含xml的全删除
+[root@svr5 ~]# sed  '/^install/d' a.txt   		 //删除以install开头的行
+[root@svr5 ~]# sed  '$d' a.txt             	 //删除文件的最后一行
+[root@svr5 ~]# sed  '/^$/d' a.txt        	       //删除所有空
+
+注意事项：
+d删除 是行删除 不是只删除某一个字母
+
+
+
+
+sed命令的s替换基本功能（s/旧内容/新内容/选项）：
+sed工具的s指令案例集锦: 
+注意：替换操作的分隔“/”可改用其他字符，如#、&等，便于修改文件路径
+[root@server0 ~]# cat a.txt
+2017 4026 2011
+2017 2017 2088
+2017 2090 2017
+
+[root@svr5 ~]# sed 's/2017/xxxx/'  a.txt     	   //将每行中第一个2017替换为xxxx
+[root@svr5 ~]# sed 's/2017/xxxx/3' a.txt     	  //将每行中的第3个2017替换为xxxx
+[root@svr5 ~]# sed 's/2017/xxxx/g' a.txt      	  //将所有的2017都替换为xxxx
+[root@svr5 ~]# sed 's/2017//g'     a.txt            //将所有的2017都删除（替换为空串）
+
+注意：替换操作的分隔“/”可改用其他字符，如#、&等，便于修改文件路径
+[root@svr5 ~]# sed 's#/bin/bash#/sbin/sh#' a.txt    //将/bin/bash替换为/sbin/sh
+[root@svr5 ~]# sed '4,7s/^/#/'   a.txt              //将第4~7行注释掉（行首加#号）
+[root@svr5 ~]# sed 's/^#an/an/'  a.txt              //解除以#an开头的行的注释（去除行首的#号）
+
+
+每行文本拆分为“第1个字符”、“中间的所有字符”、“倒数第1个字符”三个部分，然后通过替换操作重排顺序为“3-2-1”：
+[root@svr5 ~]# sed -r 's/^(.)(.*)(.)$/\3\2\1/' nssw.txt
+
+##########################################################################################################################################
+
+a,append 追加，光标往后移动一格
+i，insert 插入，光标不动
+
+[root@server0 ~]# sed '1i XX' tmp.txt    \\\加i是在指定行的前面 
+XX
+Hello  Aijia
+Ni Hao  Aijia 
+Yue Ma
+[root@server0 ~]# sed '1a XX' tmp.txt     \\\加a是在指定行的的后面
+Hello  Aijia
+XX
+Ni Hao  Aijia 
+Yue Ma
+
+[root@server0 ~]# sed '3c xxx' tmp.txt       \\\加c是修改指定的那一行
+Hello  Aijia
+Ni Hao  Aijia 
+xxx
+[root@server0 ~]# sed '2c xxx' tmp.txt        \\\加c是修改指定的那一行
+Hello  Aijia
+xxx
+Yue Ma
+##########################################################################################################################################
+  sed [选项] '条件指令'  文件.....
+   选项：p，d，s，a，i，c
+   指令：p打印 d删除 s修改关键词  a增加 i增加 c修改行
+   条件：行号，/正则/
+   不常用指令 r 
+sed 'r /etc/hosts' tmp.txt  读入  每一行读一编  
+sed '2r /etc/hosts' tmp.txt  再第二行读入
+    不常用指令 r  另存为 
+[root@server0 ~]# sed  'w /root/2.txt' tmp.txt    把tmp.txt的所有行 写入root/2.txt    如果2.txt有东西的花 会把原有的东西删除 
+[root@server0 ~]# sed  '2w /root/2.txt' tmp.txt   把tmp.txt的第二行 写入root/2.txt    如果2.txt有东西的花 会把原有的东西删除
+
+
+
+
+
+
+
+

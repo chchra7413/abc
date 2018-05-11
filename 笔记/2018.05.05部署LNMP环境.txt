@@ -1,0 +1,131 @@
+nginx 
+静态页面：（用户要什么，服务器就找什么，并直接返回给用户  ）
+动态网站：（用户要页面，服务器识别是脚本或者别的语言，然后在服务器上执行脚本，再把结果返回给用户）
+
+部署LNMP：   什么是LNMP
+主流的企业网站平台之一 
+  —L：Linux操作系统
+  —N: Nginx网站服务软件
+  —M：MySQL，MariaDB数据库
+  —P：网站开发语言（PHP Perl，Python） 
+
+nginx：          支持wab网站  端口80
+mariadb-server: 存数据的数据库服务器
+mariadb：       客户端软件 (支持进入数据库 mariadb-develmysql命令)
+mariadb-devel： 相关的依赖包 (只要是红帽的光盘 带devel的都是依赖包) 端口3306
+php：           只是一个解释器(用什么语言写的 装什么语言的解释器)
+php-mysql：     给PHP安装扩展库文件，使得PHP可以连接Mariadb数据库
+php-fpm：       端口9000     
+
+php语言的语法格式：
+<?php      \\\解释器
+$i=33;     \\\定义变量，(每句话要有分号结尾)
+echo $i;   \\\显示变量
+?>            \\\结尾 
+
+nginx实现动静分离 判断  如果是静态页面，则nginx直接返回页面  如果是动态页面，则nginx先转发给9000(PHP)，PHP执行脚本，返回给nginx，nginx返回结果给用户
+实现动静分离：
+location 可以匹配用户的地址栏  找不到的匹配的时候 全部都跟根(/)匹配 
+location /          {allow all;} 
+location /test      {deny all; }
+location /abc       {deny 1.1.1.1，allow all；}
+
+firefox http：//192.168.4.5  匹配根  任何人可以打开 
+firefox http：//192.168.4.5/test 匹配/test 任何人不能打开
+firefox http：//192.168.4.5/abs  匹配/abc  除1.1.1.1不可以访问 其他IP都可以访问 
+firefox http：//192.168.4.5/qq   没有qq这个location 所以匹配根
+
+修改配置文件：  [root@proxy ~]# vim /usr/local/nginx/conf/nginx.conf
+
+ location ~ \.php$ {
+            root           html;
+            fastcgi_pass   127.0.0.1:9000;
+            fastcgi_index  index.php;
+            include        fastcgi.conf;
+        }
+
+
+查看php-fpm配置文件
+[root@proxy etc]# vim /etc/php-fpm.d/www.conf
+[www]
+listen = 127.0.0.1:9000             ///PHP端口号
+pm.max_children = 32                ///最大进程数量
+pm.start_servers = 15               ///最小进程数量
+pm.min_spare_servers = 5            ///最少需要几个空闲着的进程
+pm.max_spare_servers = 32           ///最多允许几个进程处于空闲状态
+
+nginx日志 
+/usr/local/nginx/logs/error/log  
+
+php日志
+/var/log/php-fpm/www-error.log
+
+实验失败的原因：
+1、出现下载不对
+2、出现空白页面不对
+3、出现 an Error 不对
+
+LNMP常见错误： nginx---php-fpm      （tailf 可以动态看日志）
+1、没有起nginx服务的话  访问页面会显示无法连接
+2、如果有服务没有启动的话 页面会显示 An error 用tailf查看nginx的日志 /usr/local/nginx/logs/error.log
+3、没有做动静分离 页面会显示下载文件 不是动态网站！！！
+4、php脚本代码写错了 访问页面会显示是空白页面   解决：用tailf查看php日志  /var/log/php-fpm/www-error.log 
+
+    脚本程序：可以参考lnmp_soft/php_scripts/mysql.php:
+php-----------------------mysql
+1、启动数据库 要有的3306端口
+2、php必须要安装扩展包(php-mysql) 
+
+#######################################################################################################################################
+
+地址重写：地址栏被重写 
+比如：地址栏输入www.360buy.com----------地址栏重写为www.jd.com
+
+关于Nginx服务器的地址重写，主要用到的配置参数是rewrite：
+rewrite regex replacement flag
+rewrite 旧地址 新地址 [选项]
+
+修改Nginx服务配置：
+[root@proxy ~]# vim /usr/local/nginx/conf/nginx.conf
+.. ..
+server {
+        listen       80;
+        server_name  localhost;
+location / {
+    root   html;
+index  index.html index.htm;
+rewrite /a.html  /b.html;      !!!!!!!!!!!!!!!          
+}
+}
+
+rewrite ^/  http://www.tmooc.cn/            \\\修改配置文件(访问192.168.4.5的请求重定向至www.tmooc.cn)
+
+rewrite ^/(.*)  http://www.tmooc.cn/$1;     \\\ 修改配置文件(访问192.168.4.5/下面子页面，重定向至www.tmooc.cn/下相同的页面)
+ 
+不同浏览器，访问相同页面，返回不同结果 
+1、准备工作 （2个页面）
+创建网页目录以及对应的页面文件
+
+echo "curl" > test.html 
+[root@Proxy html]# mkdir firefox
+[root@Proxy html]# cd firefox 
+[root@Proxy firefox]# echo  "firefox" > test.html 
+做两套页面 
+
+
+2、根据浏览器的if判断做地址调转
+
+if ($http_user_agent ~* firefox) {                  //识别客户端firefox浏览器 ～用正则 加*不区分大小写 不加* 区分大小写 
+rewrite ^(.*)$ /firefox/$1;
+}
+
+
+
+地址重写格式【总结】
+rewrite 旧地址 新地址 [选项];
+last 不再读其他rewrite
+break 不再读其他语句，结束请求
+redirect 临时重定向
+permament 永久重定向
+ 
+

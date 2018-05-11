@@ -1,0 +1,240 @@
+nginx配置文件及目录
+/user/local/nginx   安装目录
+config/nginx.conf   主配置文件
+html         网页目录
+logs         日志文件
+sbin/nginx   启动脚本
+
+常用选项：
+-V : 查看编译参数
+-t : 测试默认配置文件
+-c : 指定配置文件
+
+
+模块（现代化软件，设计的都是模块化的软件）
+设计100（写完）
+安装 ：根据自己的需要自定义安装 
+
+添加eth1网卡的命令
+nmcli  connectoin  add  con-name  eth1  ifname  eth1  type  ethernet
+
+private1 : 192.168.4.254
+private2 : 192.168.2.254
+
+/usr/local/nginx/sbin/nginx                   启动服务
+/usr/local/nginx/sbin/nginx -s stop           关闭服务
+/usr/local/nginx/sbin/nginx -s reload         重新加载配置文件
+               服务启动时才能重新加载
+/usr/local/nginx/sbin/nginx –V                查看软件信息
+ln -s /usr/local/nginx/sbin/nginx  /sbin/      方便后期使用
+
+准备四台虚拟机，配置ip，主机名，配置yum，确认yum可用，挂载
+第一台配置eth0，ip为4.100  ，主机名为Client
+第二台配置eth0，eth1，ip是4.5   2.5 ，主机名为Proxy
+第三台配置eth1，ip是2.100，主机名为Web1
+第四台配置eth1，ip是2.200，主机名为Web2
+# mkdir  /dvd
+# mount  /dev/cdrom  /dvd    (本地yum源  file://)
+# mount  /iso/光盘  /var/ftp/share   (网络yum源  http://  ftp://)
+
+真实机下载：
+[root@room9pc01 ~]# wget  ftp://172.40.50.118/course/operation/lnmp_soft.tar.gz
+[root@room9pc01 ~]# scp  lnmp_soft.tar.gz   192.168.4.5:/root
+
+Proxy上：
+[root@Proxy ~]# tar  -xf  lnmp_soft.tar.gz 
+[root@Proxy ~]# ls
+anaconda-ks.cfg       lnmp_soft         公共  视频  文档  音乐
+initial-setup-ks.cfg  lnmp_soft.tar.gz  模板  图片  下载  桌面
+[root@Proxy ~]# cd  lnmp_soft/
+[root@Proxy lnmp_soft]# pwd
+/root/lnmp_soft
+[root@Proxy lnmp_soft]# ls
+nginx-1.10.3.tar.gz                    
+nginx-1.12.2.tar.gz                    
+nginx.conf                            
+nginx.spec            
+
+步骤一：构建Nginx服务器
+
+使用源码包安装nginx软件包
+[root@proxy ~]# yum –y install gcc pcre-devel openssl- devel   安装依赖包     
+[root@Proxy ~]# useradd  -s  /sbin/nologin  nginx
+[root@Proxy ~]# tar  -xf  nginx-1.10.3.tar.gz 
+[root@Proxy ~]# cd  nginx-1.10.3/
+[root@Proxy nginx-1.10.3]# ./configure  --user=nginx  --group=nginx  --with-http_ssl_module          （检查环境，配置）（指定用户）           （指定组）
+(对网站加密，必须加)                              （启动服务的用户）
+--prefix=/usr/local/nginx   安装路径，可以自己指定，不指定就默认/usr/local/nginx
+
+回车之后出现错误就是没装包 （提示：./configure  Error......）
+[root@Proxy nginx-1.10.3]# make  &&  make  install   编译并安装
+                                （编译二进制）  （拷贝,覆盖:）    
+[root@Proxy nginx-1.10.3]# ls  /usr/local/nginx    有东西说明软件已装完
+[root@Proxy nginx-1.10.3]# /usr/local/nginx/sbin/nginx  启动服务
+网页访问服务，输入ip4.5，出现welcome to  nginx 说明启动成功
+重复启服务会报错
+[root@Proxy nginx-1.10.3]# ln -s  /usr/local/nginx/sbin/nginx   /sbin/
+                                   方便后期使用 ,做个链接，不用打绝对路径
+[root@Proxy nginx-1.10.3]# netstat  -anptu  |  grep  nginx
+                                  查看端口有谁在用，过滤服务信息
+关闭服务之后，页面打不开
+
+关闭防火墙和selinux，，默认是关的，
+浏览器测试，输入ip测试（确保页面可以访问）
+
+步骤二：升级Nginx服务器
+
+编译新版本nginx软件
+
+[root@Proxy nginx-1.10.3]# cd  /root/lnmp_soft/
+[root@Proxy nginx-1.12.2]# tar  -xf  nginx-1.12.2.tar.gz 
+[root@Proxy nginx-1.12.2]# cd  nginx-1.12.2/
+[root@Proxy nginx-1.12.2]# ./configure  --user=nginx  --group=nginx  --with-http_ssl_module
+            再ls查看一下，会多一个objs
+[root@Proxy nginx-1.12.2]# make  编译C++，转换成二进制
+[root@Proxy nginx-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          1.12.2]# ls  /usr/local/nginx/sbin/
+nginx
+[root@proxy nginx-1.12.2]# mv /usr/local/nginx/sbin/nginx  /usr/local/nginx/sbin/nginx.bak            旧备份
+root@proxy nginx-1.12.2]# cp objs/nginx  /usr/local/nginx/sbin/  拷贝新版本
+[root@proxy nginx-1.12.2]# make upgrade         升级
+                          /usr/local/nginx/sbin/nginx  -t
+[root@proxy ~]# /usr/local/nginx/sbin/nginx –v            查看版本
+如果没有成功再重新升级一遍
+
+然后用浏览器和命令行测试curl
+
+
+ 案例2：用户认证（访问页面的用户，可以建多个）
+
+步骤一：修改Nginx配置文件
+vim  /usr/local/nginx/conf/nginx.conf   全局配置（用户名，日志，进程）
+program  程序  （硬盘：qq.exe）
+process  进程   (内存)
+thread   线程  （存放在进程里，省内存任）
+
+做两个网站：
+http{
+     server{
+         listen  80;
+            server_name  localhost;
+               root  html;
+
+     }
+server{
+         listen  80;
+            server_name  localhost;
+               root  html;
+       }
+}
+
+[root@proxy ~]# vim  /usr/local/nginx/conf/nginx.conf
+server {
+        listen       80;
+ 35行     server_name  www.a.com;
+添加的两行auth_basic "Input Password:";     认证提示信息
+         auth_basic_user_file "/usr/local/nginx/pass";   认证密码文件
+        location / {
+            root   html;
+            index  index.html index.htm;
+        }
+  }
+
+生成密码文件，创建用户及密码
+[root@proxy ~]# yum -y install  httpd-tools
+[root@Proxy nginx-1.12.2]# htpasswd   -c  /usr/local/nginx/pass  wml
+                                    （create）                (用户名)
+New password: 
+Re-type new password: 
+再添加用户时，不使用-c选项  eg：htpasswd   /usr/local/nginx/pass  qq
+[root@Proxy nginx-1.12.2]# nginx  -s  reload  重新加载配置文件    
+请先确保nginx是启动状态才可以执行命令成功，否则报错
+浏览器测试访问，会发现进不去，必须输入用户名密码
+
+
+案例3：基于域名的虚拟主机（基于域名，基于端口，基于ip）
+
+步骤一：修改配置文件
+
+修改Nginx服务配置，添加相关虚拟主机配置
+[root@proxy ~]# vim  /usr/local/nginx/conf/nginx.conf
+server {
+     listen       80;
+    server_name  www.a.com; 
+  
+     location / {
+        root   html;
+         index  index.html index.htm;
+      }
+ }
+
+server {
+ 87行 listen       80;
+    server_name  www.b.com;
+  
+     location / {
+        root   www;
+         index  index.html index.htm;
+      }
+ }
+[root@Proxy nginx-1.12.2]# cd  /usr/local/nginx/
+[root@Proxy nginx]# mkdir  www
+[root@Proxy nginx]# echo  wmllll  >  www/index.html
+[root@Proxy nginx]# nginx -s  reload   重新加载一下
+
+步骤二：客户端测试
+
+修改客户端主机192.168.4.100的/etc/hosts文件，进行域名解析
+谁是客户端，改谁的hosts
+[root@Client ~]# vim  /etc/hosts
+192.168.4.5  www.a.com   www.b.com   修改谁影响谁
+登录192.168.4.100客户端主机进行测试
+注意：请先关闭真实机的firefox，SSH –X远程连接调用虚拟机的firefox
+[root@client ~]# firefox http://www.aa.com     输入密码后可以访问(自己创建的那个用户)
+[root@client ~]# firefox http://www.bb.com     直接访问
+
+ 案例4：SSL虚拟主机
+http协议明文（用户密码）
+https加密
+步骤一：配置SSL虚拟主机
+
+生成私钥与证书
+[root@Proxy nginx]# cd  /usr/local/nginx/conf/
+[root@Proxy conf]# openssl  genrsa  >  cert.key    生成私钥 
+                                    生成            私钥
+[root@Proxy conf]# openssl  req  -new  -x509  -key  cert.key  >  cert.pem  生成证书
+国家 ：
+省份 ：
+城市 ：
+公司 ：
+部门 ：
+服务器名字 ：
+邮箱 ：
+
+[root@Proxy conf]# vim  /usr/local/nginx/conf/nginx.conf
+            99行--116行都去掉注释
+    server {
+        listen       443 ssl;
+        server_name  www.c.com;
+
+        ssl_certificate      cert.pem;  证书与私钥的位置不能颠倒，名字随意起
+        ssl_certificate_key  cert.key; 
+
+        ssl_session_cache    shared:SSL:1m;
+        ssl_session_timeout  5m; 
+
+        ssl_ciphers  HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers  on; 
+
+        location / { 
+            root   html;
+            index  index.html index.htm;
+        }
+    }   
+
+[root@Proxy conf]# nginx  -s  reload   重新加载一下
+
+Client客户端验证：
+[root@Client ~]# vim  /etc/hosts
+192.168.4.5  www.a.com  www.b.com  www.c.com
+[root@Client ~]# firefox  https://www.c.com   信任证书后可以访问
+

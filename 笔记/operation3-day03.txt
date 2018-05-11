@@ -1,0 +1,370 @@
+Nginx反向代理
+使用Nginx实现Web反向代理功能，实现如下功能：
+后端Web服务器两台，可以使用httpd实现
+Nginx采用轮询的方式调用后端Web服务器
+两台Web服务器的权重要求设置为不同的值
+最大失败次数为1，失败超时时间为30秒
+
+使用4台RHEL7虚拟机，其中一台作为Nginx代理服务器，该服务器需要配置两块网卡，IP地址分别为192.168.4.5和192.168.2.5，两台Web服务器IP地址分别为192.168.2.100和192.168.2.200。客户端测试主机IP地址为192.168.4.100
+
+
+Proxy ：nginx代理服务器，有两张网卡
+Web1，Web2 ：两台服务器
+Client ：客户端测试主机
+
+步骤一：部署实施后端Web服务器
+
+
+部署后端Web1服务器
+[root@web1 ~]# yum  -y  install  httpd
+[root@web1 ~]# echo "192.168.2.100" > /var/www/html/index.html
+[root@web1 ~]# systemctl restart httpd
+
+部署后端Web2服务器
+[root@web2 ~]# yum  -y  install  httpd
+[root@web2 ~]# echo "192.168.2.200" > /var/www/html/index.html
+[root@web2 ~]# systemctl restart httpd
+
+客户端测试两台服务器
+[root@Web1 ~]# firefox 192.168.2.200
+[root@Web2 ~]# firefox 192.168.2.100
+
+步骤二：配置Nginx服务器，添加服务器池，实现反向代理功能
+
+修改/usr/local/nginx/conf/nginx.conf配置文件
+Proxy上：
+[root@proxy ~]# vim /usr/local/nginx/conf/nginx.conf
+51,52,53注释掉,在server上面加入
+upstream  webs {    webs 名字随意写
+        server  192.168.2.100:80；
+        server  192.168.2.200:80；
+     }
+location / {
+        proxy_pass  http://webs;(跟上面的保持一致)
+             root   html;
+            index    index.html index.htm;
+}
+
+[root@proxy ~]# nginx –s reload
+         如果加载不成功，看是否启动服务
+
+客户端测试Client
+[root@client ~]# curl http://192.168.4.5   使用该命令多次访问查看效果
+192.168.2.100
+在Web1上关闭httpd，客户端测试一下，再重启一下httpd，客户端测试会出现动态页面，2.100  2.200随机改变
+
+步骤二：配置upstream服务器集群池属性
+
+设置失败次数，超时时间，权重
+weight设置服务器权重，默认值是1
+max_fails最大测试失败次数（设置失败次数）
+fail_timeout失败超时多久之内不再找，等待超时时间再重新寻找
+
+[root@Proxy ~]# vim  /usr/local/nginx/conf/nginx.conf
+.........
+upstream  webs {
+        server  192.168.2.100:80  weight=2  max_fails=1 fail_timeout=10;
+        server  192.168.2.200:80;
+    }
+........
+[root@proxy ~]# nginx –s reload
+客户端Client测试，192.168.4.5，出现2.100，2.200,在Web1上关闭httpd，访问只出现2.200，20秒内不能访问，再打开httpd，客户端再进行测试，20秒内，还是出现2.200，，20秒后自动连接，2.100，2.200又都出现
+
+步骤三：配置upstream服务器集群的调度算法
+
+设置相同客户端访问相同Web服务器
+[root@proxy ~]# vim /usr/local/nginx/conf/nginx.conf
+.........
+upstream  webs {
+	   ip_hash;
+        server  192.168.2.100:80  weight=2  max_fails=1 fail_timeout=10;
+        server  192.168.2.200:80;
+    }
+........
+[root@proxy ~]# nginx –s reload
+客户端使用浏览器访问代理服务器测试轮询效果
+[root@client ~]# curl http://192.168.4.5  多次重复操作
+只出现2.200
+
+安装stream模块：
+[root@proxy ~]#  cd  /root/lnmp_soft/nginx-1.12.2/
+[root@proxy ~]#  ./configure  --user=nginx --group=nginx --with-http_ssl_module  --with-stream
+			开启TCP/UDP代理模块
+[root@proxy ~]# make
+[root@proxy ~]# mv  /usr/local/nginx/sbin/nginx   /usr/local/nginx/sbin/nginx.bak
+[root@proxy ~]# cp  objs/nginx  /usr/local/nginx/sbin/
+[root@proxy ~]#  make  upgrade
+
+
+步骤二：配置Nginx服务器，添加服务器池，实现TCP/UDP反向代理功能
+
+修改配置文件
+[root@proxy ~]# vim /usr/local/nginx/conf/nginx.conf
+手动写入
+stream{
+         upstream yp {
+        server  192.168.2.100:22;(端口随便写)
+        server  192.168.2.200:22;
+}
+        server {
+        listen 123;(端口随便写,因为有的端口会在使用)
+        proxy_pass yp;
+	 proxy_connect_timeout 1s;这两行可有可无
+        proxy_timeout 3s;
+}
+}
+[root@Proxy nginx-1.12.2]# nginx -s  reload
+
+客户端使用访问Porxy代理服务器测试轮询效果
+[root@client ~]# ssh 192.168.4.5 -p 12345   使用该命令多次访问查看效果
+结果连的是2.100，exit退出，重新连接，连的是2.200
+
+					
+					|------------>Web1
+client-------Porxy[nginx]------|
+					|------------>Web2
+
+
+ 案例3：Nginx常见问题处理
+
+步骤：屏蔽服务器版本号信息
+
+优化前客户端测试服务器版本号信息
+客户端Client：
+[root@client ~]# curl -I http://192.168.4.5
+HTTP/1.1 200 OK
+Server: nginx/1.12.2
+修改Nginx配置文件，屏蔽版本信息
+[root@proxy ~]# vim /usr/local/nginx/conf/nginx.conf
+再http下面添加
+http {
+       server_tokens off;       不显示nginx版本号信息
+
+}
+[root@proxy ~]# nginx -s reload
+
+优化后客户端Client测试服务器版本号信息
+[root@client ~]# curl -I http://192.168.4.5
+HTTP/1.1 200 OK
+Server: nginx
+
+步骤三：优化Nginx并发量
+
+优化前使用ab高并发测试
+
+[root@Proxy ~]# ab  -c  1000  -n 1000 http://192.168.4.5/
+   如果没有ab命令，需安装http-tools
+Benchmarking 192.168.4.5 (be patient)
+[root@Proxy ~]# ab  -c  2000  -n 2000 http://192.168.4.5/
+socket: Too many open files (24)       提示打开文件数量过多
+[root@Proxy ~]# ulimit -a
+open files                      (-n) 1024
+					默认同时打开1024个文件
+
+修改Nginx配置文件，增加并发量
+
+[root@Proxy ~]# cat  /proc/cpuinfo 
+processor	: 0  单核
+
+[root@proxy ~]# vim /usr/local/nginx/conf/nginx.conf
+3行  worker_processes  1;  与CPU核心数量一致
+12行 events {
+worker_connections 65535;     每个worker最大并发连接数
+}
+
+优化Linux内核参数（最大文件数量）
+ 临时生效
+[root@proxy ~]# ulimit –Hn 100000 
+[root@proxy ~]# ulimit –Sn 100000
+n  最大文件数量
+H  硬限制（Hared），不能修改，不能超，普通用户不能修改
+S  软限制（Soft），可以修改，能超,普通用户可以修改
+                不能超过设置的文件数量
+
+永久生效：
+[root@proxy ~]# vim /etc/security/limits.conf
+*               soft    nofile            100000
+*               hard    nofile            100000
+优化后测试服务器并发量
+[root@Proxy ~]# ulimit  -a
+open files          (-n) 100000
+[root@Proxy ~]# ab  -c  2000  -n 2000 http://192.168.4.5/
+                               
+Benchmarking 192.168.4.5 (be patient)
+
+
+步骤四：优化Nginx数据包头缓存
+
+优化前，使用脚本测试长头部请求是否能获得响应
+[root@proxy ~]# cat lnmp_soft/buffer.sh 
+#!/bin/bash
+URL=http://192.168.4.5/index.html?
+for i in {1..5000}
+do
+    URL=${URL}v$i=$i
+done
+curl $URL               经过5000次循环后，生成一个长的URL地址栏
+[root@proxy ~]# /root/lnmp_soft/buffer.sh
+.. ..
+<center><h1>414 Request-URI Too Large</h1></center>  提示头部信息过大
+
+修改Nginx配置文件，增加数据包头部缓存大小
+[root@proxy ~]# vim /usr/local/nginx/conf/nginx.conf
+64行注释掉
+http {
+client_header_buffer_size    1k;       默认请求包头信息的缓存    
+large_client_header_buffers  4 4m;     大请求包头部信息的缓存个数与容量
+}
+[root@proxy ~]# nginx -s reload
+[root@Proxy ~]# /root/lnmp_soft/buffer.sh
+........
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+
+优化后，使用脚本测试长头部请求是否能获得响应
+
+[root@proxy ~]#cat buffer.sh 
+#!/bin/bash
+URL=http://192.168.4.5/index.html?
+for i in {1..5000}
+do
+    URL=${URL}v$i=$i
+done
+curl $URL
+[root@proxy ~]# ./buffer.sh
+
+
+client------------------------------>nginx
+针对图片，声音，视频让用户的浏览器缓存
+firefox,ie,chrome,360,百度
+都有本地缓存功能
+
+步骤五：浏览器本地缓存静态数据（在网页中导入一个图片）
+
+使用Firefox浏览器查看缓存
+以Firefox浏览器为例，在Firefox地址栏内输入about:cache将显示Firefox浏览器的缓存信息，，点击List Cache Entries可以查看详细信息。
+
+清空firefox本地缓存数据
+
+
+修改Nginx配置文件，定义对静态页面的缓存时间
+[root@proxy ~]# vim /usr/local/nginx/conf/nginx.conf
+在location下再写一个，不能写到location里面
+注释掉有if的那两行
+location ~* \.(jpg|png) {  只要是jpg|png结尾的都行
+                expires 30d;定义客户端缓存时间为30天
+        }
+
+[root@Proxy ~]# cp  /usr/share/backgrounds/day.jpg  /usr/local/nginx/html/
+[root@Proxy ~]# nginx -s  reload
+优化后，使用Firefox浏览器访问图片，再次查看缓存信息
+[root@client ~]# firefox http://192.168.4.5/day.jpg
+在Firefox地址栏内输入about:cache，查看本地缓存数据，查看是否有图片以及过期时间是否正确。
+
+步骤六：自定义报错页面
+
+优化前，客户端使用浏览器访问不存在的页面，会提示404文件未找到
+[root@client ~]# firefox http://192.168.4.5/xx   访问一个不存在的页面
+
+修改Nginx配置文件，自定义报错页面
+[root@proxy ~]# vim /usr/local/nginx/conf/nginx.conf
+
+75行 去掉注释error_page   404  /404.html;    自定义错误页面
+59行 去掉注释 charset utf-8; 设置中文页面 
+[root@proxy ~]# vim /usr/local/nginx/html/404.html     生成错误页面
+						  配置文件里是404就写404，是啥写啥
+Oops,No NO no page  错误页面出现的内容
+如果打中文，在主配置文件59行改成charset utf-8;
+
+[root@proxy ~]# nginx –s reload
+
+优化后，客户端使用浏览器访问不存在的页面，会提示自己定义的404.html页面
+
+root@client ~]# firefox http://192.168.4.5/xxx    访问一个不存在的页面
+
+步骤七：如何查看服务器状态信息
+
+编译安装时使用--with-http_stub_status_module开启状态页面模块
+
+[root@Proxy nginx-1.12.2]# ./configure  --user=nginx  --group=nginx  --with-http_ssl_module   --with-stream   --with-http_stub_status_module
+开启SSL加密功能           开启TCP/UDP代理模块          开启status状态页面
+   
+[root@Proxy nginx-1.12.2]# vim  /usr/local/nginx/conf/nginx.conf
+location下面添加
+location /status {    status随意自定义
+        stub_status on;
+ 	  allow  ip;（eg：192.168.4.5）
+	  deny  all;只影响status
+        }
+[root@proxy ~]# nginx  -s  reload
+
+[root@proxy ~]# curl  http://192.168.4.5/status
+Active connections: 1 实时连接并发的人数
+server accepts handled requests
+ 10               10                3 
+发送多少次连接   接受多少次请求   多少页面
+（10  10 tcp连接的数量）
+Reading: 0 Writing: 1 Waiting: 0
+读取页面      返回给用户     多少人等待
+
+* Active connections：当前活动的连接数量。
+Accepts：已经接受客户端的连接总数量。
+Handled：已经处理客户端的连接总数量（一般与accepts一致，除非服务器限制了连接数量）。
+Requests：客户端发送的请求数量。
+Reading：当前服务器正在读取客户端请求头的数量。
+Writing：当前服务器正在写响应信息的数量。
+* Waiting：当前多少客户端在等待服务器的响应。
+
+步骤八：对页面进行压缩处理：所有的浏览器都是解压软件，支持gzip  zip，不支持RAR
+         （好处：网站变快）
+
+修改Nginx配置文件
+[root@proxy ~]# cat /usr/local/nginx/conf/nginx.conf
+http {
+.. ..
+gzip on;         开启压缩
+gzip_min_length 1000;        小文件不压缩,小于1000k不压缩
+gzip_comp_level 4;     压缩比率，1--9数字随便选一个，尽量不选9，折中选
+gzip_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript;
+                              对特定文件压缩，类型参考mime.types
+}                                   /usr/local/nginx/conf/mime.types
+
+mp3，jpg，mp4 不能压缩，已经是压缩过的
+       特别是视频不能压缩
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
